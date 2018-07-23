@@ -101,6 +101,7 @@ player who has exhausted their pile is declared the winner, and all other player
 (c) all players are equal losers.
 
 FAQ
+
 Can we assume that all card inputs will be valid?
 Yes.
 
