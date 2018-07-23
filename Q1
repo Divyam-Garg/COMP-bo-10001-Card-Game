@@ -1,0 +1,39 @@
+from common import (value, same_colour, adjacent, top_card)
+
+
+def comp10001bo_match_build(play_card, build_pile):
+    """
+    Returns True if 'play_card' can be legally placed on 'build_pile' and 
+    False otherwise.
+    """
+    
+    #Check if build pile empty
+    if len(build_pile) == 0:
+        build_empty = True
+    else:
+        build_empty = False
+        
+    #only '2' and 'K' can initiate empty build pile
+    if build_empty:
+        return value(play_card) == '2' or value(play_card) == 'K'
+    
+    #if build pile not empty
+    else:
+        
+        #can play same colour ace on build pile regardless of value of top card
+        #of build pile
+        if value(play_card) == 'A':
+            return same_colour(play_card, top_card(build_pile))
+        
+        #for non-ace cards
+        else:
+            #cant play non-adjacent card
+            if not(adjacent(play_card, top_card(build_pile), 'B')):
+                return False
+            
+            #cant play different colour card
+            elif not(same_colour(play_card, top_card(build_pile))):
+                return False
+            
+            #can play same colour adjacent value card
+            return True
