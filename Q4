@@ -1,0 +1,781 @@
+from common import (same_colour, adjacent, top_card, comp10001bo_match_build,
+                    comp10001bo_match_discard, comp10001bo_is_valid_play)
+
+#constants to be used to convey the type of move
+INVALID_PLAY = 0
+VALID_NONFINAL_PLAY = 1
+VALID_FINAL_PLAY = 2
+NO_PLAY = 3
+
+#constants to be used with play_type
+PLAY_FROM_HAND = 0
+PLAY_FROM_DISCARD_PILE = 1
+PLAY_FROM_DP = 1
+PLAY_FROM_STOCKPILE = 2
+NO_POSSIBLE_PLAY = 3
+
+#Constants to use with play
+PLAY_TYPE = 0
+SOURCE = 1
+DESTINATION = 2
+
+#Constants to use with play[DESTINATION]
+PILE_TYPE = 0
+BP = 0 
+DP = 1
+BP_NO = 1
+DP_SPECS = 1
+DP_OWNER_NO = 0
+DP_NO = 1
+
+#Constants to use with play[SOURCE]
+CARD = 0
+DP_SPECS = 1
+DP_OWNER_NO = 0
+DP_NO = 1
+
+#constants to use with stockpiles
+SP_TOP_CARD = 0
+STOCKPILE_CARD_NO = 1
+
+#constants to use with play_history
+PLAYER_ID = 0
+PLAY = 1
+PLAY_TYPE = 0
+SOURCE = 1
+DESTINATION = 2
+
+#constants to use with adj
+CARD = 0
+FINAL_PILE = 1
+
+#constants to use with find adjacents
+RETURN = 0
+RETURN_VALUE = 1
+FIRST_POSSIBLE_PLAY = 0
+
+def nonfinal_play_to_bps(play_type, source, player_no, hand, stockpiles,
+                         discard_piles, build_piles):
+    '''
+    Returns if given card can be played to any build pile.'''
+    
+    possible_moves = []
+    
+    #Check if card can be played to a build pile
+    for bp in range(len(build_piles)):
+        move_type = comp10001bo_is_valid_play((play_type, source, (0, bp)),
+                                              player_no, hand, stockpiles,
+                                              discard_piles, build_piles)
+        if move_type == VALID_NONFINAL_PLAY:
+            possible_moves.append((play_type, source, (0, bp)))
+            
+    return possible_moves
+    
+def nonfinal_play_to_dps(play_type, source, player_no, hand, stockpiles,
+                         discard_piles, build_piles):
+    '''
+    Returns if given card can be played legally to any discard pile'''
+    possible_moves = []
+    
+    #Check if card can be played to a discard pile
+    for player in range(4):
+        for dp in range(4):
+            move_type = comp10001bo_is_valid_play((play_type, source, 
+                                                  (1, (player, dp))),
+                                                  player_no, hand, stockpiles,
+                                                  discard_piles, build_piles)
+            if move_type == VALID_NONFINAL_PLAY:
+                possible_moves.append((play_type, source, (1, (player, dp))))
+    
+    return possible_moves
+    
+    
+def nonfinal_play_to_any_pile(play_type, source, player_no, hand, stockpiles,
+                              discard_piles, build_piles):
+    '''Returns a list of all possible build piles and discard piles the given
+    card can be played to legally'''
+        
+    possible_moves = []  #stores list of possible non final moves
+    
+    #Check if card can be played to a build pile
+    moves_to_bp = nonfinal_play_to_bps(play_type, source, player_no, hand,
+                                       stockpiles, discard_piles, 
+                                       build_piles)
+    if moves_to_bp:
+        for move in moves_to_bp:
+            possible_moves.append(move)
+    
+    #Check if card can be played to a discard pile
+    moves_to_dp = nonfinal_play_to_dps(play_type, source, player_no, hand,
+                                       stockpiles, discard_piles, 
+                                       build_piles)
+    if moves_to_dp:
+        for move in moves_to_dp:
+            possible_moves.append(move)
+    
+    
+    return possible_moves
+
+def final_play_to_dps(source, player_no, hand, stockpiles,
+                      discard_piles, build_piles):
+    '''
+    Returns if given card can be played to any discard pile. Prioritises
+    illegal play from hand over starting new discard pile'''
+    
+    possible_moves = []
+    
+    #Check if card can be played to a discard pile
+    for player in range(4):
+        for dp in range(4):
+            if dp != []:
+                move_type = comp10001bo_is_valid_play((PLAY_FROM_HAND, source, 
+                                                      (1, (player, dp))),  
+                                                      player_no, hand, 
+                                                      stockpiles, 
+                                                      discard_piles,
+                                                      build_piles)
+            if move_type == VALID_FINAL_PLAY:
+                possible_moves.append((PLAY_FROM_HAND, source,
+                                       (1, (player, dp))))
+    
+    for player in range(4):
+        for dp in range(4):
+            if dp == []:
+                move_type = comp10001bo_is_valid_play((PLAY_FROM_HAND, source, 
+                                                      (1, (player, dp))), 
+                                                      player_no, hand, 
+                                                      stockpiles, 
+                                                      discard_piles,
+                                                      build_piles)
+            if move_type == VALID_FINAL_PLAY:
+                possible_moves.append((PLAY_FROM_HAND, source,
+                                       (1, (player, dp))))
+                
+    return possible_moves
+    
+def final_play_to_specific_pile(destination, player_no, hand, stockpiles, 
+                                discard_piles, build_piles):
+    '''
+    Returns if theres any possible illegal plays player_no can make to the 
+    given destination'''
+    
+    possible_plays = []
+    
+    dp_owner_no = destination[DP_SPECS][DP_OWNER_NO]
+    dp_no = destination[DP_SPECS][DP_NO]
+    pile = discard_piles[dp_owner_no][dp_no]
+    #Check if any cards in hand can be played
+    for card in hand:
+        if comp10001bo_match_discard(card, pile, player_no, dp_owner_no):
+            possible_plays.append((PLAY_FROM_HAND, card, destination))
+                
+    return possible_plays
+                
+    
+def nonfinal_play_to_specific_pile(destination, player_no, hand, stockpiles,
+                                   discard_piles, build_piles):
+    '''
+    Returns if theres any possible legal play player_no can make to the given 
+    destination'''
+    
+    possible_plays = []  #stores possible moves
+    
+    pile_type = destination[PILE_TYPE]   #destination pile is build or discard
+    
+    #When destination pile is a discard pile
+    if pile_type == DP:
+        dp_owner_no = destination[DP_SPECS][DP_OWNER_NO]
+        dp_no = destination[DP_SPECS][DP_NO]
+        pile = discard_piles[dp_owner_no][dp_no]
+        
+        #Check if any cards in hand can be played
+        for card in hand:
+            if comp10001bo_match_discard(card, pile, player_no,
+                                         dp_owner_no, from_hand=False):
+                possible_plays.append((PLAY_FROM_HAND, card, destination))
+    
+        #Check if any cards on top of any of the discard piles can be played
+        for player in range(4):
+            for dp in discard_piles[player]:
+                card = top_card(dp)
+                if comp10001bo_match_discard(card, pile, player_no,
+                                             dp_owner_no, from_hand=False):
+                    possible_plays.append((PLAY_FROM_DISCARD_PILE, card,
+                                           destination))
+    
+    #When destination pile is a build pile
+    elif pile_type == BP:
+        bp_no = destination[BP_NO]
+        pile = build_piles[bp_no]
+        
+        for card in hand:
+            if comp10001bo_match_build(card, pile):
+                possible_plays.append((PLAY_FROM_HAND, card, destination))
+    
+        for player in range(4):
+            for dp in discard_piles[player]:
+                card = top_card(dp)
+                if comp10001bo_match_build(card, pile):
+                    possible_plays.append((PLAY_FROM_DISCARD_PILE, card,
+                                           destination))
+    
+    return possible_plays
+
+
+def safety_check(possible_moves, player_no, stockpiles, discard_piles):
+    '''
+    Checks if any move in the list of moves 'possible_moves' gives an 
+    opponent to play their stockpile card and removes them. Returns a list of 
+    moves which are safe to play.
+    '''
+    
+    safe_moves = []
+    
+    for move in possible_moves:
+        
+        #When a card is played from hand
+        if move[PLAY_TYPE] == PLAY_FROM_HAND:
+            card = move[SOURCE]
+            append_move = True
+            pile_type = move[DESTINATION][PILE_TYPE]
+
+            #if opponent can play stockpile card on the pile 'card' is played
+            #to, dont add the move to 'safe_moves'
+            for player in range(4):
+                if player != player_no:
+                    opp_sp_card = stockpiles[player][SP_TOP_CARD]
+                    if pile_type == DP:
+                        if adjacent(card, opp_sp_card, 'D')\
+                           or adjacent(card, opp_sp_card, 'B'):
+                                append_move = False
+                    elif pile_type == BP:
+                        if adjacent(card, opp_sp_card, 'B') and \
+                           same_colour(card, opp_sp_card):
+                            append_move = False    
+
+            if append_move:
+                safe_moves.append(move)
+        
+        #Need to check for 2 cases when card is played from a discard pile
+        elif move[PLAY_TYPE] == PLAY_FROM_DISCARD_PILE:
+            card = move[SOURCE][CARD]
+            append_move = True
+            pile_type = move[DESTINATION][PILE_TYPE]
+             
+            #CASE 1: Check if opponent can play stockpile card on pile 
+            #'card' will be placed on
+            for player in range(4):
+                if player != player_no:
+                    opp_sp_card = stockpiles[player][SP_TOP_CARD]
+                    if pile_type == DP:
+                        if adjacent(card, opp_sp_card, 'D')\
+                           or adjacent(card, opp_sp_card, 'B'):
+                            append_move = False    
+                    elif pile_type == BP:
+                        if adjacent(card, opp_sp_card, 'B') and \
+                           same_colour(card, opp_sp_card):
+                            append_move = False
+                        
+            #CASE 2: Check if opponent can play stockpile card on pile 
+            #'card' is removed from
+            dp_owner_no = move[SOURCE][DP_SPECS][DP_OWNER_NO]
+            dp_no = move[SOURCE][DP_SPECS][DP_NO]
+            dp = discard_piles[dp_owner_no][dp_no]
+            if len(dp) > 1:
+                card_left = dp[-2]
+                for player in range(4):
+                    if player != player_no:
+                        opp_sp_card = stockpiles[player][SP_TOP_CARD]
+                        if pile_type == DP:
+                            if adjacent(card_left, opp_sp_card, 'D')\
+                               or adjacent(card_left, opp_sp_card, 'B'):
+                                append_move = False
+                        elif pile_type == BP:
+                            if adjacent(card, opp_sp_card, 'B') and \
+                               same_colour(card, opp_sp_card):
+                                append_move = False
+
+            if append_move:
+                safe_moves.append(move)
+                
+    return safe_moves
+    
+
+def find_adjacents(adj_list, player_no, hand, stockpiles, discard_piles,
+                   build_piles):
+    '''
+    Returns (True, move) where 'move' is the next move to be played if the 
+    function finds a card adjacent to a card in adj list that can be played.
+    Returns (False, new_adj) otherwise where 'new_adj' is the list of cards
+    adjacent to cards in 'adj_list'
+    '''
+                   
+    new_adj = []
+    
+    #iterate over card in adj_list
+    for i in adj_list:
+        adj_list_card = i[CARD]
+        final_pile = i[FINAL_PILE]
+        
+        #When final pile to play stockpile card on is a build pile, check that
+        #the new adj card is adj to the required card in adj_list and is of 
+        #the same colour.
+        if final_pile == 'B':
+            for card in hand:
+                if adjacent(card, adj_list_card, 'B') and \
+                   same_colour(card, adj_list_card):
+                    new_adj.append((card, 'B'))
+                    move_to_bp = nonfinal_play_to_bps(PLAY_FROM_HAND, card,
+                                                      player_no, hand,
+                                                      stockpiles,
+                                                      discard_piles,
+                                                      build_piles)
+                    #if one of the adjacent cards can be played to a build pile
+                    #play it
+                    if move_to_bp:
+                        return (True, move_to_bp[FIRST_POSSIBLE_PLAY])
+        #When final pile to play stockpile card on is a discard pile, check 
+        #that the new adj card is adj to the required card in adj_list and is
+        #of the alternate colour.
+        if final_pile == 'D':
+            for card in hand:
+                if adjacent(card, adj_list_card, 'D') and \
+                   not same_colour(card, adj_list_card):
+                    new_adj.append((card, 'D'))    
+                    nf_play_to_dp = nonfinal_play_to_dps(PLAY_FROM_HAND,
+                                                         card, player_no,
+                                                         hand, stockpiles, 
+                                                         discard_piles,
+                                                         build_piles)
+                    #if one of the adjacent cards can be played to a discard
+                    #pile, play it
+                    if nf_play_to_dp:
+                        return (True, nf_play_to_dp[FIRST_POSSIBLE_PLAY])
+    
+    #if the adjacent cards cant be played to a pile, return 'new_adj'
+    return(False, new_adj) 
+                        
+def comp10001bo_play(player_no, hand, stockpiles, discard_piles, build_piles,
+                     play_history):
+    """
+    Returns 1 move to be played in the game comp10001_bo. Returns a 3 tuple
+    specifying where the play is made from(from hand, discard pile, etc.), the
+    source of the card(string representation of the card and location of
+    discard or build pile if applicable) and the destination of the card played
+    (location of the final discard or build pile)
+    """
+        
+    #Count how many maximum moves I can make in this turn
+    turns_left = 5
+    for move in play_history[-1::-1]:
+        if move[PLAYER_ID] == player_no:
+            turns_left -= 1
+        else:
+            break
+    
+    #Store every move in which stockpile card can be played in a list
+    sp_card = stockpiles[player_no][SP_TOP_CARD]
+    possible_moves =  nonfinal_play_to_any_pile(PLAY_FROM_STOCKPILE, sp_card, 
+                                                player_no, hand, stockpiles,
+                                                discard_piles, build_piles)
+        
+    #Out of all posibilities for stockpile top card to go to, if possible, 
+    #choose the one which also blocks another players sp_card from being 
+    #played
+    if possible_moves:
+        for move in possible_moves:
+            for player in range(4):
+                opp_sp_card = stockpiles[player][SP_TOP_CARD]
+                if player != player_no:
+                    
+                    #if final pile is a discard pile, check that the top card
+                    #on build pile is adjacent to opponents stockpile card
+                    if move[DESTINATION][PILE_TYPE] == DP:
+                        dp_owner_no = move[DESTINATION][DP_SPECS][DP_OWNER_NO]
+                        dp_no = move[DESTINATION][DP_SPECS][DP_NO]
+                        pile_card = top_card(discard_piles[dp_owner_no][dp_no])
+                        if adjacent(opp_sp_card, pile_card, 'D'):
+                            return move
+                        
+                    #if final pile is a build pile, check that the top card
+                    #on build pile is adjacent to opponents stockpile card
+                    elif move[DESTINATION][PILE_TYPE] == BP:
+                        bp_no = move[DESTINATION][BP_NO]
+                        pile_card = top_card(build_piles[BP_NO])
+                        if pile_card:
+                            if adjacent(opp_sp_card, pile_card, 'B'):
+                                return move
+
+        #if not able to block opponents card at the same time, 
+        #play the stockpile card to the first possible location
+        return possible_moves[FIRST_POSSIBLE_PLAY]        
+    
+    #if there is a card adjacent to stockpile card of and same colour on 
+    #some discard pile, try playing that to a build pile
+    if turns_left != 1:
+        
+        possible_moves =[]
+        
+        #go over every discard pile and if its top card is adjacent and of same
+        #colour as stockpile card, see if it can be played to a build pile
+        for player in range(4):
+            if player != player_no:
+                opp_sp_card = stockpiles[player][SP_TOP_CARD]
+
+                for dp_no in range(4):
+                    dp = discard_piles[player][dp_no]
+                    card = top_card(dp)
+                    if dp != []:
+                        if adjacent(card, sp_card, 'B') and \
+                           same_colour(card, sp_card):
+                            moves = nonfinal_play_to_bps(PLAY_FROM_DP,
+                                                         (card, (player,
+                                                                 dp_no)),
+                                                         player_no, hand, 
+                                                         stockpiles, 
+                                                         discard_piles,
+                                                         build_piles)
+                            if moves:
+                                for move in moves:
+                                    possible_moves.append(move)
+        
+        #Prioritize moves which dont create opportunities for opponent to play
+        #stockpile card on
+        if possible_moves:
+            safe_moves = safety_check(possible_moves, player_no, stockpiles,
+                                      discard_piles)
+            
+            if safe_moves:
+                return safe_moves[FIRST_POSSIBLE_PLAY]
+            else:
+                return possible_moves[FIRST_POSSIBLE_PLAY]
+        
+        
+    #Check if any card in hand is adjacent to stockpile top card. if yes, then
+    #see if it can be played to apt build pile or discard pile(legally) 
+    #depending on if its the same colour or different
+    if turns_left > 1:
+        adj1 = []
+        for card in hand:
+            #if theres a card in hand adjacent to stockpile top card and of 
+            #same colour
+            if adjacent(card, sp_card, 'B') and same_colour(card, sp_card):
+                adj1.append((card, 'B'))
+                move_to_bp = nonfinal_play_to_bps(PLAY_FROM_HAND, card,
+                                                  player_no, hand, stockpiles,
+                                                  discard_piles,
+                                                  build_piles)
+                if move_to_bp:
+                    return move_to_bp[FIRST_POSSIBLE_PLAY]
+
+            #if theres a card in hand adjacent to stockpile top card and of 
+            #different colour
+            elif (adjacent(card, sp_card, 'D') and 
+                  not same_colour(card, sp_card)):
+                adj1.append((card, 'D'))    
+                nonfinal_play_to_dp = nonfinal_play_to_dps(PLAY_FROM_HAND, 
+                                                           card, player_no,
+                                                           hand, stockpiles, 
+                                                           discard_piles,
+                                                           build_piles)
+                if nonfinal_play_to_dp:
+                    return nonfinal_play_to_dp[FIRST_POSSIBLE_PLAY]
+    
+    #if theres card(s) adjacent to stockpile card in hand but it cant be
+    #played anywhere, try finding cards adjacent to the adjacent card and try 
+    #to play it
+        if turns_left > 2:
+            next_adj = find_adjacents(adj1, player_no, hand, stockpiles, 
+                                      discard_piles, build_piles)
+            if next_adj[RETURN]:
+                #play the move returned by 'find_adjacents'
+                return next_adj[RETURN_VALUE]
+            else:
+                #assign the new list of adjacents returned by 'find_adjacents'
+                # to 'adj2' and keep looking for adjacents cards to 'adj2'
+                adj2 = next_adj[RETURN_VALUE]
+                
+                #Only look adjacent cards to 'adj2' if at least 4 turns left
+                if turns_left > 3 and adj2:
+                    next_adj = find_adjacents(adj2, player_no, hand,
+                                              stockpiles, discard_piles,
+                                              build_piles)
+                    if next_adj[RETURN]:
+                        return next_adj[RETURN_VALUE]
+                    else:
+                        adj3 = next_adj[RETURN_VALUE]
+                        
+                        #if still cant play a move, stop looking for more
+                        #adjacent cards as I only have max 5 moves in a turn
+                        if turns_left > 4 and adj3:
+                            next_adj = find_adjacents(adj2, player_no, hand,
+                                                      stockpiles, 
+                                                      discard_piles,
+                                                      build_piles)
+                            if next_adj[RETURN]:
+                                return next_adj[RETURN_VALUE]
+                            
+       
+    #if any opponent can play their stockpile top card somewhere and it can be 
+    #blocked legally, block it
+    for player in range(4):
+        
+        #find the possible moves opponents can make from stockpile
+        if player != player_no:
+            opp_sp_card = stockpiles[player][SP_TOP_CARD]
+            possible_moves = nonfinal_play_to_any_pile(PLAY_FROM_STOCKPILE,
+                                                       sp_card, player, hand,
+                                                       stockpiles, 
+                                                       discard_piles, 
+                                                       build_piles)
+            
+            #find possible moves to block such a move by opponent without
+            #making illegal move
+            if possible_moves:
+                for move in possible_moves:
+                    #see if a card can be played on the pile opponent can play
+                    #stockpile card on
+                    if move[DESTINATION][PILE_TYPE] == DP:
+                        dp_owner_no = move[DESTINATION][DP_SPECS][DP_OWNER_NO]
+                        dp_no = move[DESTINATION][DP_SPECS][DP_NO]
+                        destination = (DP, (dp_owner_no, dp_no))
+                    elif move[DESTINATION][PILE_TYPE] == BP:
+                        bp_no = move[DESTINATION][BP_NO]
+                        destination = (BP, bp_no)
+                    counters = nonfinal_play_to_specific_pile(destination,
+                                                              player_no,
+                                                              hand,
+                                                              stockpiles,
+                                                              discard_piles, 
+                                                              build_piles)
+                if counters:
+                    #Try playing a move that doesnt open up possibility for
+                    #opponent to play stockpile card. But if such a move isnt
+                    #possible, play unsafe move provided its not the last turn
+                    safe_counters = safety_check(counters, player_no,
+                                                 stockpiles, discard_piles)
+                    if safe_counters:
+                        return safe_counters[FIRST_POSSIBLE_PLAY]
+                    elif turns_left != 1:
+                        return counters[FIRST_POSSIBLE_PLAY]
+                
+                #if the card opponent can play stockpile card to is the top 
+                #card of a discard pile, see if that can be moved to a bulid
+                #pile
+                for move in possible_moves:
+                    if move[DESTINATION][PILE_TYPE] == DP:
+                        dp_owner_no = move[DESTINATION][DP_SPECS][DP_OWNER_NO]
+                        dp_no = move[DESTINATION][DP_SPECS][DP_NO]
+                        top_card_dp = discard_piles[dp_owner_no][dp_no]
+                        counters =  nonfinal_play_to_bps(PLAY_FROM_DP,
+                                                         (top_card_dp, 
+                                                          (dp_owner_no,
+                                                           dp_no)), player_no,
+                                                         hand,
+                                                         stockpiles,
+                                                         discard_piles, 
+                                                         build_piles)
+                        if counters:
+                            #Try playing a safe move But if it isnt possible
+                            #play unsafe move provided its not the last turn
+                            safe_counters = safety_check(counters, player_no,
+                                                         stockpiles,
+                                                         discard_piles)
+                            if safe_counters:
+                                return safe_counters[FIRST_POSSIBLE_PLAY]
+                            elif turns_left != 1:
+                                return counters[FIRST_POSSIBLE_PLAY]
+    
+    #When cant set up play for own stockpile card or block someone elses play,
+    #get rid of as many cards from hand as possible so that new cards can be 
+    #drawn in the next turn which may lead to some combinations to play own
+    #stockpile card
+    if turns_left > 1:
+        possible_moves = []
+        
+        for card in hand:
+            moves = nonfinal_play_to_any_pile(PLAY_FROM_HAND, card, player_no,
+                                              hand, stockpiles, discard_piles, 
+                                              build_piles)
+            if moves:
+                for move in moves:
+                    possible_moves.append(move)
+        
+        #Make sure no possible_moves give opponent chance to play stockpile
+        #card
+        safe_moves = safety_check(possible_moves, player_no, stockpiles,
+                                  discard_piles)
+            
+        if safe_moves: 
+            return safe_moves[FIRST_POSSIBLE_PLAY]
+            
+    #When cant do any of the above and opponent can play stockpile card in 
+    #their turn, try to block with illegal move
+    for player in range(4):
+        if player != player_no:
+            opp_sp_card = stockpiles[player][SP_TOP_CARD]
+            possible_moves = nonfinal_play_to_any_pile(PLAY_FROM_STOCKPILE,
+                                                       sp_card, player, hand,
+                                                       stockpiles, 
+                                                       discard_piles, 
+                                                       build_piles)
+            if possible_moves:
+                #if opponent can play stockpile card in their turn, find 
+                #possible illegal moves to block
+                for move in possible_moves:
+                    dp_owner_no = move[DESTINATION][DP_SPECS][DP_OWNER_NO]
+                    dp_no = move[DESTINATION][DP_SPECS][DP_NO]
+                    destination = (DP, (dp_owner_no, dp_no))
+                    counters = final_play_to_specific_pile(destination,
+                                                           player_no, hand,
+                                                           stockpiles,
+                                                           discard_piles, 
+                                                           build_piles)
+                if counters:
+                    #Make sure I am not setting up another play for opponent
+                    #to play stockpile card
+                    safe_counters = safety_check(counters, player_no,
+                                                 stockpiles, discard_piles)
+                    if safe_counters:
+                        return safe_counters[FIRST_POSSIBLE_PLAY]
+    
+    
+    #When none of the above, if theres a card adjacent in value to stockpile 
+    #card and of alternate colour, try starting a discard pile with it 
+    #or play it illegaly.
+    possible_moves = []
+    for card in hand:
+        if adjacent(card, sp_card, 'D') and not same_colour(card, sp_card):
+            moves = final_play_to_dps(card, player_no, hand, stockpiles,
+                                      discard_piles, 
+                                      build_piles)
+            if moves:
+                for move in moves:
+                    possible_moves.append(move)
+    
+    if possible_moves:
+        #Make sure opponent cant play their stockpile card on the new discard
+        #pile
+        safe_moves = safety_check(possible_moves, player_no, stockpiles, 
+                                  discard_piles)
+
+        if safe_moves:     
+            return safe_moves[FIRST_POSSIBLE_PLAY]
+    
+    #on last turn, try emptying hand if cant play a useful final play
+    if turns_left == 1:
+        possible_moves = []
+        
+        for card in hand:
+            moves = nonfinal_play_to_any_pile(PLAY_FROM_HAND, card, player_no,
+                                              hand, stockpiles, discard_piles, 
+                                              build_piles)
+            if moves:
+                for move in moves:
+                    possible_moves.append(move)
+        
+        if possible_moves:
+            #Make sure I am not setting up a play for opponent
+            #to play stockpile card
+            safe_moves = safety_check(possible_moves, player_no, stockpiles,
+                                      discard_piles)
+
+            if safe_moves:
+                return safe_moves[FIRST_POSSIBLE_PLAY]    
+    
+    #When cant do any of the above, play any possible non useful moves,
+    #prioritizing moves that dont benefit the opponent
+    hand_empty = (len(hand) == 0)
+    
+    #try playing illegal move/start discard pile from hand
+    if not hand_empty:
+        possible_moves = []
+        
+        for card in hand:
+            moves = final_play_to_dps(card, player_no, hand, stockpiles,
+                                      discard_piles, build_piles)
+            if moves:
+                for move in moves:
+                    possible_moves.append(move)
+        
+        if possible_moves:
+            #Make sure I am not setting up a play for opponent
+            #to play stockpile card
+            safe_moves = safety_check(possible_moves, player_no, stockpiles,
+                                      discard_piles)
+            if safe_moves:
+                return safe_moves[FIRST_POSSIBLE_PLAY]
+        
+    #play any possible cards from any discard pile to anywhere else if they 
+    #dont help opponent
+    possible_moves = []
+    for player in range(4):
+        for dp_no in range(4):
+            dp = discard_piles[player][dp_no]
+            card = top_card(dp)
+            if dp != []:
+                moves = nonfinal_play_to_any_pile(PLAY_FROM_DISCARD_PILE,
+                                                  (card, (player, dp_no)),
+                                                  player_no, hand, 
+                                                  stockpiles, 
+                                                  discard_piles,
+                                                  build_piles)
+                if moves:
+                    for move in moves:
+                        possible_moves.append(move)
+    
+    if possible_moves:
+        #Make sure I am not setting up a play for opponent
+            #to play stockpile card
+        safe_moves = safety_check(possible_moves, player_no, stockpiles, 
+                                  discard_piles)
+
+        if safe_moves:
+            return safe_moves[FIRST_POSSIBLE_PLAY]
+            
+    #Play any card from hand even if it helps opponent prioritizing illegal
+    #so it only helps 1 opponent at max
+    if not hand_empty:
+        possible_moves = []
+        for card in hand:
+            possible_moves1 = final_play_to_dps(card, player_no, hand,
+                                                stockpiles, discard_piles, 
+                                                build_piles)
+            possible_moves2 = nonfinal_play_to_any_pile(PLAY_FROM_HAND, card, 
+                                                        player_no, hand,
+                                                        stockpiles,
+                                                        discard_piles,
+                                                        build_piles)
+            
+        for move in possible_moves1:
+            possible_moves.append(move)
+        for move in possible_moves2:
+            possible_moves.append(move)
+        
+        if possible_moves:
+            return possible_moves[FIRST_POSSIBLE_PLAY]
+    
+    #try to play card from any discard pile to anywhere, even if it helps
+    #opponent
+    possible_moves = []
+    for player in range(4):
+        for dp_no in range(4):
+            dp = discard_piles[player][dp_no]
+            card = top_card(dp)
+            if dp != []:
+                moves = nonfinal_play_to_any_pile(PLAY_FROM_DISCARD_PILE,
+                                                  (card, (player, dp_no)),
+                                                  player_no, hand, 
+                                                  stockpiles, 
+                                                  discard_piles,
+                                                  build_piles)
+                if moves:
+                    for move in moves:
+                        possible_moves.append(move)
+        
+    if possible_moves:
+        return possible_moves[FIRST_POSSIBLE_PLAY]
+    
+    #if none of the above plays possible, no play is possible
+    return (NO_POSSIBLE_PLAY, None, (None, None))
+
